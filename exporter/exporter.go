@@ -22,6 +22,7 @@ const (
 // Exporter collects clickhouse stats from the given URI and exports them using
 // the prometheus metrics package.
 type Exporter struct {
+	host            string
 	metricsURI      string
 	asyncMetricsURI string
 	eventsURI       string
@@ -58,6 +59,7 @@ func NewExporters(uris []url.URL, insecure bool, user, password string) []*Expor
 		partsURI.RawQuery = q.Encode()
 
 		exporter := &Exporter{
+			host:            uri.Host,
 			metricsURI:      metricsURI.String(),
 			asyncMetricsURI: asyncMetricsURI.String(),
 			eventsURI:       eventsURI.String(),
@@ -114,7 +116,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      metricName(m.key),
 			Help:      "Number of " + m.key + " currently processed",
-		}, []string{}).WithLabelValues()
+		}, []string{"host"}).WithLabelValues(e.host)
 		newMetric.Set(m.value)
 		newMetric.Collect(ch)
 	}
@@ -129,7 +131,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      metricName(am.key),
 			Help:      "Number of " + am.key + " async processed",
-		}, []string{}).WithLabelValues()
+		}, []string{"host"}).WithLabelValues(e.host)
 		newMetric.Set(am.value)
 		newMetric.Collect(ch)
 	}
@@ -158,7 +160,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      "table_parts_bytes",
 			Help:      "Table size in bytes",
-		}, []string{"database", "table"}).WithLabelValues(part.database, part.table)
+		}, []string{"host", "database", "table"}).WithLabelValues(e.host, part.database, part.table)
 		newBytesMetric.Set(float64(part.bytes))
 		newBytesMetric.Collect(ch)
 
@@ -166,7 +168,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      "table_parts_count",
 			Help:      "Number of parts of the table",
-		}, []string{"database", "table"}).WithLabelValues(part.database, part.table)
+		}, []string{"host", "database", "table"}).WithLabelValues(e.host, part.database, part.table)
 		newCountMetric.Set(float64(part.parts))
 		newCountMetric.Collect(ch)
 
@@ -174,7 +176,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      "table_parts_rows",
 			Help:      "Number of rows in the table",
-		}, []string{"database", "table"}).WithLabelValues(part.database, part.table)
+		}, []string{"host", "database", "table"}).WithLabelValues(e.host, part.database, part.table)
 		newRowsMetric.Set(float64(part.rows))
 		newRowsMetric.Collect(ch)
 	}
