@@ -34,44 +34,51 @@ type Exporter struct {
 	password string
 }
 
-// NewExporter returns an initialized Exporter.
-func NewExporter(uri url.URL, insecure bool, user, password string) *Exporter {
-	q := uri.Query()
-	metricsURI := uri
-	q.Set("query", "select metric, value from system.metrics")
-	metricsURI.RawQuery = q.Encode()
+// NewExporters returns initialized Exporters for uris.
+func NewExporters(uris []url.URL, insecure bool, user, password string) []*Exporter {
+	var exporters []*Exporter
+	for _, uri := range uris {
+		q := uri.Query()
+		metricsURI := uri
+		q.Set("query", "select metric, value from system.metrics")
+		metricsURI.RawQuery = q.Encode()
 
-	asyncMetricsURI := uri
-	q.Set("query", "select replaceRegexpAll(toString(metric), '-', '_') AS metric, value from system.asynchronous_metrics")
-	asyncMetricsURI.RawQuery = q.Encode()
+		asyncMetricsURI := uri
+		q.Set("query",
+			"select replaceRegexpAll(toString(metric), '-', '_') AS metric, value from system.asynchronous_metrics")
+		asyncMetricsURI.RawQuery = q.Encode()
 
-	eventsURI := uri
-	q.Set("query", "select event, value from system.events")
-	eventsURI.RawQuery = q.Encode()
+		eventsURI := uri
+		q.Set("query", "select event, value from system.events")
+		eventsURI.RawQuery = q.Encode()
 
-	partsURI := uri
-	q.Set("query", "select database, table, sum(bytes) as bytes, count() as parts, sum(rows) as rows from system.parts where active = 1 group by database, table")
-	partsURI.RawQuery = q.Encode()
+		partsURI := uri
+		q.Set("query",
+			"select database, table, sum(bytes) as bytes, count() as parts, sum(rows) as rows from system.parts where active = 1 group by database, table")
+		partsURI.RawQuery = q.Encode()
 
-	return &Exporter{
-		metricsURI:      metricsURI.String(),
-		asyncMetricsURI: asyncMetricsURI.String(),
-		eventsURI:       eventsURI.String(),
-		partsURI:        partsURI.String(),
-		scrapeFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: namespace,
-			Name:      "exporter_scrape_failures_total",
-			Help:      "Number of errors while scraping clickhouse.",
-		}),
-		client: &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: insecure},
+		exporter := &Exporter{
+			metricsURI:      metricsURI.String(),
+			asyncMetricsURI: asyncMetricsURI.String(),
+			eventsURI:       eventsURI.String(),
+			partsURI:        partsURI.String(),
+			scrapeFailures: prometheus.NewCounter(prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "exporter_scrape_failures_total",
+				Help:      "Number of errors while scraping clickhouse.",
+			}),
+			client: &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: insecure},
+				},
+				Timeout: 30 * time.Second,
 			},
-			Timeout: 30 * time.Second,
-		},
-		user:     user,
-		password: password,
+			user:     user,
+			password: password,
+		}
+		exporters = append(exporters, exporter)
 	}
+	return exporters
 }
 
 // Describe describes all the metrics ever exported by the clickhouse exporter. It
@@ -223,7 +230,7 @@ func (e *Exporter) parseKeyValueResponse(uri string) ([]lineResult, error) {
 
 	// Parsing results
 	lines := strings.Split(string(data), "\n")
-	var results []lineResult = make([]lineResult, 0)
+	var results = make([]lineResult, 0)
 
 	for i, line := range lines {
 		parts := strings.Fields(line)
@@ -260,7 +267,7 @@ func (e *Exporter) parsePartsResponse(uri string) ([]partsResult, error) {
 
 	// Parsing results
 	lines := strings.Split(string(data), "\n")
-	var results []partsResult = make([]partsResult, 0)
+	var results = make([]partsResult, 0)
 
 	for i, line := range lines {
 		parts := strings.Fields(line)

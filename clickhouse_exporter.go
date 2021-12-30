@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/ClickHouse/clickhouse_exporter/exporter"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,7 +16,7 @@ import (
 var (
 	listeningAddress    = flag.String("telemetry.address", ":9116", "Address on which to expose metrics.")
 	metricsEndpoint     = flag.String("telemetry.endpoint", "/metrics", "Path under which to expose metrics.")
-	clickhouseScrapeURI = flag.String("scrape_uri", "http://localhost:8123/", "URI to clickhouse http endpoint")
+	clickhouseScrapeURIs = flag.String("scrape_uris", "http://localhost:8123/;http://localhost2:8123/", "URIs to clickhouse http endpoint")
 	clickhouseOnly      = flag.Bool("clickhouse_only", false, "Expose only Clickhouse metrics, not metrics from the exporter itself")
 	insecure            = flag.Bool("insecure", true, "Ignore server certificate if using https")
 	user                = os.Getenv("CLICKHOUSE_USER")
@@ -25,11 +26,15 @@ var (
 func main() {
 	flag.Parse()
 
-	uri, err := url.Parse(*clickhouseScrapeURI)
-	if err != nil {
-		log.Fatal(err)
+	var uriArr []url.URL
+	for _, uri := range strings.Split(*clickhouseScrapeURIs, ":") {
+		uri, err := url.Parse(uri)
+		if err != nil {
+			log.Fatal(err)
+		}
+		uriArr = append(uriArr, *uri)
 	}
-	log.Printf("Scraping %s", *clickhouseScrapeURI)
+	log.Printf("Scraping %s", *clickhouseScrapeURIs)
 
 	registerer := prometheus.DefaultRegisterer
 	gatherer := prometheus.DefaultGatherer
@@ -39,8 +44,10 @@ func main() {
 		gatherer = reg
 	}
 
-	e := exporter.NewExporter(*uri, *insecure, user, password)
-	registerer.MustRegister(e)
+	exporters := exporter.NewExporters(uriArr, *insecure, user, password)
+	for _, e := range exporters {
+		registerer.MustRegister(e)
+	}
 
 	http.Handle(*metricsEndpoint, promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
