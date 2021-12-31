@@ -58,15 +58,16 @@ func NewExporters(uris []url.URL, insecure bool, user, password string) []*Expor
 			"select database, table, sum(bytes) as bytes, count() as parts, sum(rows) as rows from system.parts where active = 1 group by database, table")
 		partsURI.RawQuery = q.Encode()
 
+		num := fmt.Sprintf("%v", i)
 		exporter := Exporter{
-			hostNum:         fmt.Sprintf("%v", i),
+			hostNum:         num,
 			metricsURI:      metricsURI.String(),
 			asyncMetricsURI: asyncMetricsURI.String(),
 			eventsURI:       eventsURI.String(),
 			partsURI:        partsURI.String(),
 			scrapeFailures: prometheus.NewCounter(prometheus.CounterOpts{
 				Namespace: namespace,
-				Name:      "exporter_scrape_failures_total",
+				Name:      num + "_exporter_scrape_failures_total",
 				Help:      "Number of errors while scraping clickhouse.",
 			}),
 			client: &http.Client{
