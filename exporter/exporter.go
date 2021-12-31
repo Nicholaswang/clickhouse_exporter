@@ -22,7 +22,7 @@ const (
 // Exporter collects clickhouse stats from the given URI and exports them using
 // the prometheus metrics package.
 type Exporter struct {
-	host            string
+	num             int
 	metricsURI      string
 	asyncMetricsURI string
 	eventsURI       string
@@ -38,7 +38,7 @@ type Exporter struct {
 // NewExporters returns initialized Exporters for uris.
 func NewExporters(uris []url.URL, insecure bool, user, password string) []*Exporter {
 	var exporters []*Exporter
-	for _, uri := range uris {
+	for i, uri := range uris {
 		q := uri.Query()
 		metricsURI := uri
 		q.Set("query", "select metric, value from system.metrics")
@@ -58,8 +58,8 @@ func NewExporters(uris []url.URL, insecure bool, user, password string) []*Expor
 			"select database, table, sum(bytes) as bytes, count() as parts, sum(rows) as rows from system.parts where active = 1 group by database, table")
 		partsURI.RawQuery = q.Encode()
 
-		exporter := &Exporter{
-			host:            uri.Host,
+		exporter := Exporter{
+			num:             i,
 			metricsURI:      metricsURI.String(),
 			asyncMetricsURI: asyncMetricsURI.String(),
 			eventsURI:       eventsURI.String(),
@@ -78,7 +78,7 @@ func NewExporters(uris []url.URL, insecure bool, user, password string) []*Expor
 			user:     user,
 			password: password,
 		}
-		exporters = append(exporters, exporter)
+		exporters = append(exporters, &exporter)
 	}
 	return exporters
 }
@@ -116,7 +116,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      metricName(m.key),
 			Help:      "Number of " + m.key + " currently processed",
-		}, []string{"host"}).WithLabelValues(e.host)
+		}, []string{"hostNum"}).WithLabelValues(string(e.num))
 		newMetric.Set(m.value)
 		newMetric.Collect(ch)
 	}
@@ -131,7 +131,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      metricName(am.key),
 			Help:      "Number of " + am.key + " async processed",
-		}, []string{"host"}).WithLabelValues(e.host)
+		}, []string{"hostNum"}).WithLabelValues(string(e.num))
 		newMetric.Set(am.value)
 		newMetric.Collect(ch)
 	}
@@ -160,7 +160,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      "table_parts_bytes",
 			Help:      "Table size in bytes",
-		}, []string{"host", "database", "table"}).WithLabelValues(e.host, part.database, part.table)
+		}, []string{"hostNum", "database", "table"}).WithLabelValues(string(e.num), part.database, part.table)
 		newBytesMetric.Set(float64(part.bytes))
 		newBytesMetric.Collect(ch)
 
@@ -168,7 +168,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      "table_parts_count",
 			Help:      "Number of parts of the table",
-		}, []string{"host", "database", "table"}).WithLabelValues(e.host, part.database, part.table)
+		}, []string{"hostNum", "database", "table"}).WithLabelValues(string(e.num), part.database, part.table)
 		newCountMetric.Set(float64(part.parts))
 		newCountMetric.Collect(ch)
 
@@ -176,7 +176,7 @@ func (e *Exporter) collect(ch chan<- prometheus.Metric) error {
 			Namespace: namespace,
 			Name:      "table_parts_rows",
 			Help:      "Number of rows in the table",
-		}, []string{"host", "database", "table"}).WithLabelValues(e.host, part.database, part.table)
+		}, []string{"host", "database", "table"}).WithLabelValues(string(e.num), part.database, part.table)
 		newRowsMetric.Set(float64(part.rows))
 		newRowsMetric.Collect(ch)
 	}
@@ -318,7 +318,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	ch <- prometheus.MustNewConstMetric(
 		prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "up"),
+			prometheus.BuildFQName(namespace, string(e.num), "up"),
 			"Was the last query of ClickHouse successful.",
 			nil, nil,
 		),
