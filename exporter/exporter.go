@@ -321,7 +321,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, "", "up"),
 			"Was the last query of ClickHouse successful.",
-			[]string{"host"}, prometheus.Labels{"host": e.host},
+			nil, nil,
 		),
 		prometheus.GaugeValue, float64(upValue),
 	)
